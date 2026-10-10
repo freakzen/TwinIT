@@ -1,0 +1,379 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import {
+  Activity,
+  ArrowRight,
+  ArrowUpRight,
+  BadgeIndianRupee,
+  CircleDollarSign,
+  Clock3,
+  ShoppingBag,
+  Users,
+  Wallet,
+} from "lucide-react";
+
+import { createClient } from "@/lib/supabase/server";
+import Sidebar from "@/components/Sidebar";
+import MetricCard from "@/components/MetricCard";
+import BusinessChart from "@/components/charts/BusinessChart";
+import SignOutButton from "@/components/SignOutButton";
+
+const money = (amount: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+
+export default async function DashboardPage() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    redirect("/");
+  }
+
+  const [{ data: profile }, { data: business }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("full_name,email,avatar_url")
+      .eq("id", user.id)
+      .maybeSingle(),
+
+    supabase
+      .from("businesses")
+      .select("*")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (!business) {
+    redirect("/onboarding");
+  }
+
+  const revenue = Number(business.monthly_revenue || 0);
+  const expenses = Number(business.monthly_expenses || 0);
+  const profit = revenue - expenses;
+  const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+  const initials = (profile?.full_name || user.email || "T")
+    .split(" ")
+    .map((part: string) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const customerCount = Number(business.customers_per_day || 0);
+  const marketingSpend = Number(business.marketing_spend || 0);
+
+  const healthScore = Math.max(
+    0,
+    Math.min(100, Math.round(50 + margin * 1.5))
+  );
+
+  return (
+    <div className="app-shell">
+      <Sidebar />
+
+      <main className="main-panel">
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">WORKSPACE / OVERVIEW</span>
+            <h1>Business overview</h1>
+          </div>
+
+          <div className="topbar-actions">
+            <span className="date-pill">
+              <Activity size={15} />
+              Twin engine ready
+            </span>
+
+            {/* Profile opens Business Settings */}
+            <Link
+              href="/onboarding"
+              className="user-chip user-chip-link"
+              title="Manage personal and business settings"
+              aria-label="Open business settings"
+            >
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="Profile" />
+              ) : (
+                <span className="avatar-fallback">{initials}</span>
+              )}
+
+              <div>
+                <b>{profile?.full_name || "Business owner"}</b>
+                <small>{business.name}</small>
+              </div>
+
+              <ArrowUpRight
+                className="profile-open-icon"
+                size={14}
+              />
+            </Link>
+
+            <SignOutButton />
+          </div>
+        </header>
+
+        <div className="page-content">
+          <section className="welcome-row">
+            <div>
+              <div className="live-label">
+                <span className="status-dot" />
+                YOUR BUSINESS TWIN IS ONLINE
+              </div>
+
+              <h2>
+                Good to see you,{" "}
+                {(profile?.full_name || "there").split(" ")[0]}{" "}
+                <span>✦</span>
+              </h2>
+
+              <p>
+                Here’s the latest snapshot of <b>{business.name}</b>.
+                Make your next move with more clarity.
+              </p>
+            </div>
+
+            <Link href="/simulations" className="primary-button">
+              Run a simulation
+              <ArrowRight size={16} />
+            </Link>
+          </section>
+
+          <section className="metric-grid">
+            <MetricCard
+              title="Monthly revenue"
+              value={money(revenue)}
+              detail="Based on your business profile"
+              icon={BadgeIndianRupee}
+              tone="violet"
+              trend="up"
+            />
+
+            <MetricCard
+              title="Monthly expenses"
+              value={money(expenses)}
+              detail="Operating costs entered"
+              icon={Wallet}
+              tone="teal"
+            />
+
+            <MetricCard
+              title="Estimated profit"
+              value={money(profit)}
+              detail={`${margin.toFixed(1)}% profit margin`}
+              icon={CircleDollarSign}
+              tone={profit >= 0 ? "green" : "rose"}
+              trend={profit >= 0 ? "up" : "down"}
+            />
+
+            <MetricCard
+              title="Customers / day"
+              value={customerCount.toLocaleString("en-IN")}
+              detail="Average daily footfall"
+              icon={Users}
+              tone="amber"
+            />
+          </section>
+
+          <section className="dashboard-grid">
+            <article className="panel performance-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="section-kicker">PERFORMANCE</span>
+                  <h3>Revenue vs expenses</h3>
+                  <p>
+                    Illustrative trend based on your current profile
+                  </p>
+                </div>
+
+                <span className="subtle-pill">6-month view*</span>
+              </div>
+
+              <div className="chart-legend">
+                <span>
+                  <i className="legend-dot violet-dot" />
+                  Revenue
+                </span>
+
+                <span>
+                  <i className="legend-dot teal-dot" />
+                  Expenses
+                </span>
+              </div>
+
+              <BusinessChart
+                revenue={revenue}
+                expenses={expenses}
+              />
+
+              <p className="footnote">
+                *Estimated values for interface preview, not imported
+                historical transactions.
+              </p>
+            </article>
+
+            <article className="panel twin-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="section-kicker">DIGITAL TWIN</span>
+                  <h3>Business health</h3>
+                </div>
+
+                <span className="twin-orb">✦</span>
+              </div>
+
+              <div className="health-score">
+                <div className="score-ring">
+                  <div>
+                    <strong>{healthScore}</strong>
+                    <small>/ 100</small>
+                  </div>
+                </div>
+
+                <div>
+                  <b>
+                    {profit < 0
+                      ? "Needs attention"
+                      : margin >= 25
+                        ? "Healthy margins"
+                        : "Growth opportunity"}
+                  </b>
+
+                  <p>
+                    {profit < 0
+                      ? "Your expenses exceed revenue. Review costs first."
+                      : "Use simulations to test how pricing, costs and marketing affect profit."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="health-list">
+                <div>
+                  <span>Profit margin</span>
+                  <b>{margin.toFixed(1)}%</b>
+                </div>
+
+                <div>
+                  <span>Monthly operating cost</span>
+                  <b>
+                    {revenue > 0
+                      ? `${((expenses / revenue) * 100).toFixed(1)}% of revenue`
+                      : "—"}
+                  </b>
+                </div>
+
+                <div>
+                  <span>Marketing spend</span>
+                  <b>{money(marketingSpend)}</b>
+                </div>
+              </div>
+
+              <Link href="/recommendations" className="text-link">
+                Explore AI insights
+                <ArrowRight size={15} />
+              </Link>
+            </article>
+          </section>
+
+          <section className="bottom-grid">
+            <article className="panel action-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="section-kicker">TAKE ACTION</span>
+                  <h3>What would you like to explore?</h3>
+                </div>
+              </div>
+
+              <div className="action-links">
+                <Link href="/simulations">
+                  <span className="action-icon purple">
+                    <Activity size={18} />
+                  </span>
+
+                  <span>
+                    <b>Test a business decision</b>
+                    <small>
+                      Compare price, cost and marketing changes
+                    </small>
+                  </span>
+
+                  <ArrowRight size={16} />
+                </Link>
+
+                <Link href="/forecasts">
+                  <span className="action-icon mint">
+                    <Clock3 size={18} />
+                  </span>
+
+                  <span>
+                    <b>Explore your outlook</b>
+                    <small>
+                      Review scenario-based projections
+                    </small>
+                  </span>
+
+                  <ArrowRight size={16} />
+                </Link>
+
+                <Link href="/reports">
+                  <span className="action-icon gold">
+                    <ShoppingBag size={18} />
+                  </span>
+
+                  <span>
+                    <b>Review business summary</b>
+                    <small>
+                      View key numbers in one place
+                    </small>
+                  </span>
+
+                  <ArrowRight size={16} />
+                </Link>
+              </div>
+            </article>
+
+            <article className="panel note-panel">
+              <span className="note-spark">✦</span>
+              <span className="section-kicker">A NOTE ON YOUR TWIN</span>
+
+              <h3>
+                Better inputs.
+                <br />
+                Better decisions.
+              </h3>
+
+              <p>
+                Your current twin uses the business figures you provided.
+                Add real historical data over time to make forecasts more
+                meaningful.
+              </p>
+
+              <Link
+                href="onboarding"
+                className="secondary-button"
+              >
+                Update business data
+                <ArrowUpRight size={15} />
+              </Link>
+            </article>
+          </section>
+
+          <footer className="page-footer">
+            TwinIT <span>·</span> Simulate smarter. Decide better.
+            <span className="footer-right">
+              Your data stays in your workspace.
+            </span>
+          </footer>
+        </div>
+      </main>
+    </div>
+  );
+}
